@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Train Tracker — Live Running Status</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-2: #273449;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #f59e0b;
+    --accent-2: #fbbf24;
+    --success: #10b981;
+    --danger: #ef4444;
+    --border: #334155;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: linear-gradient(160deg, #0b1224 0%, #0f172a 60%, #111827 100%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+  }
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+  }
+  header.app {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand .logo {
+    width: 52px; height: 52px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; box-shadow: var(--shadow);
+  }
+  .brand h1 { font-size: 22px; margin: 0; letter-spacing: 0.3px; }
+  .brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .date-pill {
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--muted); padding: 8px 14px;
+    border-radius: 999px; font-size: 13px;
+  }
+  .server-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    font-size: 12px; border: 1px solid var(--border);
+  }
+  .server-status .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .server-status.ok { color: var(--success); }
+  .server-status.ok .dot { background: var(--success); box-shadow: 0 0 8px var(--success); }
+  .server-status.off { color: var(--danger); }
+  .server-status.off .dot { background: var(--danger); }
+
+  .lookup-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  .lookup-card h2 {
+    margin: 0 0 6px;
+    font-size: 17px;
+    color: var(--accent-2);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .lookup-card .subtitle {
+    margin: 0 0 16px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .lookup-row {
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  .lookup-row input[type="text"],
+  .lookup-row input[type="date"],
+  .lookup-row select {
+    flex: 1 1 160px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .lookup-row input:focus, .lookup-row select:focus { border-color: var(--accent); }
+  .btn {
+    cursor: pointer;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+    color: #1f2937;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 15px;
+    transition: transform 0.08s ease, box-shadow 0.15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(245, 158, 11, 0.3); }
+  .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .result-box {
+    margin-top: 14px;
+    display: none;
+  }
+  .result-card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .result-card.error {
+    background: #3b1a1a;
+    border-color: var(--danger);
+    color: #fecaca;
+  }
+  .result-card .head {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .result-card .head strong { color: var(--accent-2); }
+  .time-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .time-grid .label {
+    font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .time-grid .value {
+    font-size: 20px; font-weight: 700;
+  }
+  .time-grid .value.actual { color: var(--success); }
+  .time-grid .value.empty { color: var(--muted); font-weight: 400; }
+
+  section.tracked h2 {
+    font-size: 18px;
+    margin: 0 0 14px;
+    color: var(--text);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: var(--shadow);
+    transition: border-color 0.18s, transform 0.18s;
+    position: relative;
+  }
+  .card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+  .card .train-no {
+    font-size: 20px; font-weight: 700;
+    color: var(--accent-2); letter-spacing: 1px;
+  }
+  .card .train-name {
+    color: var(--text); font-size: 14px; line-height: 1.35;
+  }
+  .card .route { color: var(--muted); font-size: 12px; }
+  .card .hint {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    border-top: 1px dashed var(--border);
+    padding-top: 8px;
+  }
+  .icon-btn {
+    position: absolute;
+    top: 10px; right: 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    transition: all 0.15s;
+  }
+  .icon-btn:hover { color: var(--danger); border-color: var(--danger); }
+
+  .add-train {
+    background: var(--panel);
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-top: 14px;
+  }
+  .add-train h3 {
+    margin: 0 0 10px; font-size: 13px;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+  }
+
+  .setup-banner {
+    background: #1a2a3b;
+    border: 1px solid #38556d;
+    color: #cfe7ff;
+    padding: 14px 16px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    font-size: 13px;
+    line-height: 1.6;
+    display: none;
+  }
+  .setup-banner code {
+    background: #0b1422; padding: 2px 6px; border-radius: 4px;
+    color: var(--accent-2); font-size: 12px;
+  }
+
+  .footer-note {
+    margin-top: 36px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 600px) {
+    .brand h1 { font-size: 18px; }
+    .brand .logo { width: 44px; height: 44px; font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="app">
+    <div class="brand">
+      <div class="logo">🚆</div>
+      <div>
+        <h1>Train Tracker</h1>
+        <p>Live running status via RailRadar</p>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div class="server-status" id="serverStatus"><span class="dot"></span><span id="serverStatusText">Checking…</span></div>
+      <div class="date-pill" id="todayPill">…</div>
+    </div>
+  </header>
+
+  <div class="setup-banner" id="setupBanner">
+    <strong>Local helper not running.</strong>
+    To fetch and display train data, start the helper:
+    open Terminal in this folder and run <code>python3 tracker_server.py</code>,
+    then open <code>http://localhost:5050</code> in your browser.
+  </div>
+
+  <!-- Station Time Lookup -->
+  <div class="lookup-card">
+    <h2>Station Time Lookup</h2>
+    <p class="subtitle">
+      Enter train number and station code to get live actual arrival &amp; departure times with delay status.
+    </p>
+    <div class="lookup-row">
+      <input type="text" id="stTrainNo" placeholder="Train number (e.g., 22439)" inputmode="numeric" maxlength="5" />
+      <input type="text" id="stStation" placeholder="Station code (e.g., NDLS)" maxlength="5" style="text-transform:uppercase;" />
+      <input type="date" id="stDate" title="Journey date" style="flex:1 1 160px;color-scheme:dark;" />
+      <button class="btn" id="stGoBtn">Get Arrival / Departure</button>
+    </div>
+    <div class="result-box" id="stResult"></div>
+  </div>
+
+  <section class="tracked">
+    <h2>Tracked Trains <span style="font-size:12px;color:var(--muted);font-weight:400;">— click a card to prefill the lookup</span></h2>
+    <div class="grid" id="trainGrid"></div>
+
+    <div class="add-train">
+      <h3>+ Add a train</h3>
+      <div class="lookup-row">
+        <input type="text" id="newTrainNo" placeholder="Train number" inputmode="numeric" maxlength="5" />
+        <input type="text" id="newTrainName" placeholder="Train name" />
+        <input type="text" id="newTrainRoute" placeholder="Route (optional, e.g., BCT → NDLS)" />
+        <button class="btn" id="addTrainBtn">Add</button>
+      </div>
+    </div>
+  </section>
+
+  <p class="footer-note">
+    Data source: RailRadar &middot; fetched by a local Python helper and rendered inline.
+  </p>
+</div>
+
+<script>
+  // -------- Default sample trains --------
+  const DEFAULT_TRAINS = [
+    { no: "12951", name: "Mumbai Rajdhani Express",      route: "MMCT → NDLS" },
+    { no: "12309", name: "Rajendra Nagar Rajdhani",      route: "RJPB → NDLS" },
+    { no: "12002", name: "New Delhi Shatabdi Express",   route: "NDLS → BPL"  }
+  ];
+  let trains = [...DEFAULT_TRAINS];
+
+  // -------- Utilities --------
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+  function formatTodayHuman() {
+    return new Date().toLocaleDateString(undefined, {
+      weekday: "long", year: "numeric", month: "long", day: "numeric"
+    });
+  }
+
+  // -------- Server status --------
+  async function checkServer() {
+    const statusEl = document.getElementById("serverStatus");
+    const textEl = document.getElementById("serverStatusText");
+    const banner = document.getElementById("setupBanner");
+    try {
+      const res = await fetch("/api/health", { cache: "no-store" });
+      if (!res.ok) throw new Error("not ok");
+      const data = await res.json();
+      statusEl.classList.remove("off");
+      statusEl.classList.add("ok");
+      if (data.api_key_configured) {
+        textEl.textContent = "Helper online · API key OK";
+        banner.style.display = "none";
+      } else {
+        textEl.textContent = "Helper online · API key missing";
+        banner.style.display = "block";
+        banner.innerHTML = `
+          <strong>Almost there — add your RailRadar API key.</strong><br/>
+          1. Sign up free at <a href="https://railradar.in" target="_blank" rel="noopener" style="color:#fbbf24;">railradar.in</a><br/>
+          2. Copy your API key from the dashboard<br/>
+          3. Save it:  <code>echo "YOUR_KEY" &gt; .api_key</code>   (in this folder)<br/>
+          4. Restart the server:  <code>python3 tracker_server.py</code>
+        `;
+      }
+      return data.api_key_configured === true;
+    } catch (e) {
+      statusEl.classList.remove("ok");
+      statusEl.classList.add("off");
+      textEl.textContent = "Helper offline";
+      banner.style.display = "block";
+      banner.innerHTML = `
+        <strong>Local helper not running.</strong>
+        Open Terminal in this folder and run <code>python3 tracker_server.py</code>,
+        then refresh this page.
+      `;
+      return false;
+    }
+  }
+
+  // -------- Station Time Lookup --------
+  async function fetchStationTime(trainNo, station) {
+    const params = new URLSearchParams({ train: trainNo, station });
+    const res = await fetch(`/api/station-time?${params.toString()}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data && data.error ? data.error : `HTTP ${res.status}`);
+      err.debug = data;
+      throw err;
+    }
+    return data;
+  }
+
+  function renderResult(data) {
+    const resultEl = document.getElementById("stResult");
+    const cell = (v, cls = "") => (v !== null && v !== undefined && v !== "" && v !== "--")
+      ? `<div class="value ${cls}">${escapeHtml(String(v))}</div>`
+      : `<div class="value empty">—</div>`;
+
+    const delayBadge = (delayStr) => {
+      if (!delayStr) return "";
+      const m = String(delayStr).match(/(\d+)/);
+      const n = m ? parseInt(m[1], 10) : 0;
+      const color = n === 0 ? "var(--success)" : n <= 15 ? "var(--accent)" : "var(--danger)";
+      const text = n === 0 ? "On time" : `+${n} min late`;
+      return `<span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:${color}22;color:${color};font-size:11px;font-weight:600;">${text}</span>`;
+    };
+
+    resultEl.style.display = "block";
+    resultEl.innerHTML = `
+      <div class="result-card">
+        <div class="head">
+          Train <strong>${escapeHtml(data.train)}</strong>${data.train_name ? ' <span style="color:var(--text);">' + escapeHtml(data.train_name) + '</span>' : ''}
+          &middot; ${escapeHtml(data.station)}${data.station_name ? ' <span style="color:var(--text);">(' + escapeHtml(data.station_name) + ')</span>' : ''}
+          &middot; ${escapeHtml(data.date)}
+          ${data.platform ? ` &middot; Platform <strong>${escapeHtml(String(data.platform))}</strong>` : ""}
+        </div>
+        <div class="time-grid">
+          <div>
+            <div class="label">Sch. Arrival</div>
+            ${cell(data.scheduled_arrival)}
+          </div>
+          <div>
+            <div class="label">Sch. Departure</div>
+            ${cell(data.scheduled_departure)}
+          </div>
+          <div>
+            <div class="label">Act. Arrival${delayBadge(data.delay_arrival)}</div>
+            ${cell(data.actual_arrival, "actual")}
+          </div>
+          <div>
+            <div class="label">Act. Departure${delayBadge(data.delay_departure)}</div>
+            ${cell(data.actual_departure, "actual")}
+          </div>
+        </div>
+        <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted);">
+          ${data.current_station ? `<span>Current station: <strong style="color:var(--text);">${escapeHtml(String(data.current_station))}</strong>${data.gps_status ? ` (${escapeHtml(data.gps_status.replace('_',' '))})` : ''}</span>` : ""}
+          ${data.gps_lat && data.gps_lng ? `<span style="color:var(--success);">GPS: ${data.gps_lat.toFixed(5)}, ${data.gps_lng.toFixed(5)}</span>` : ""}
+          ${data.data_source ? `<span style="background:var(--panel);padding:2px 8px;border-radius:999px;border:1px solid var(--border);">Source: ${escapeHtml(data.data_source)}</span>` : ""}
+          ${data.last_updated ? `<span>Updated: ${escapeHtml(new Date(data.last_updated).toLocaleTimeString())}</span>` : ""}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderError(msg, debug) {
+    const resultEl = document.getElementById("stResult");
+    resultEl.style.display = "block";
+    let extra = "";
+    if (debug && Array.isArray(debug.available_stations) && debug.available_stations.length) {
+      extra = `
+        <div style="margin-top:10px;font-size:12px;color:#fecaca;">
+          Stations on this train's route:
+        </div>
+        <div style="margin-top:6px;font-size:12px;display:flex;flex-wrap:wrap;gap:4px;">
+          ${debug.available_stations.map(c => `<code style="background:#0b1422;color:#fbbf24;padding:2px 6px;border-radius:4px;">${escapeHtml(c)}</code>`).join(" ")}
+        </div>`;
+    }
+    resultEl.innerHTML = `<div class="result-card error"><strong>Could not fetch:</strong> ${escapeHtml(msg)}${extra}</div>`;
+  }
+
+  document.getElementById("stGoBtn").addEventListener("click", async () => {
+    const no = document.getElementById("stTrainNo").value.trim();
+    const station = document.getElementById("stStation").value.trim().toUpperCase();
+    const btn = document.getElementById("stGoBtn");
+    const resultEl = document.getElementById("stResult");
+
+    if (!/^\d{4,5}$/.test(no)) { renderError("Please enter a valid 4-5 digit train number."); return; }
+    if (!/^[A-Z]{2,5}$/.test(station)) { renderError("Please enter a valid station code (2-5 letters)."); return; }
+
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = "Fetching…";
+    resultEl.style.display = "block";
+    resultEl.innerHTML = `<div class="result-card"><div class="head" style="color:var(--text);">Fetching NTES data for Train <strong>${escapeHtml(no)}</strong> at ${escapeHtml(station)}…</div></div>`;
+
+    try {
+      const data = await fetchStationTime(no, station);
+      renderResult(data);
+    } catch (err) {
+      renderError(err.message || String(err), err.debug);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  });
+
+  ["stTrainNo", "stStation"].forEach(id => {
+    document.getElementById(id).addEventListener("keydown", (e) => {
+      if (e.key === "Enter") document.getElementById("stGoBtn").click();
+    });
+  });
+
+  // -------- Tracked trains: click to prefill --------
+  function renderTrainCards() {
+    const grid = document.getElementById("trainGrid");
+    grid.innerHTML = "";
+    if (trains.length === 0) {
+      grid.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);text-align:center;padding:20px;border:1px dashed var(--border);border-radius:12px;">No trains yet. Add one below.</div>';
+      return;
+    }
+    trains.forEach((t, idx) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <button class="icon-btn" title="Remove" data-remove="${idx}">✕</button>
+        <div class="train-no">${escapeHtml(t.no)}</div>
+        <div class="train-name">${escapeHtml(t.name || "")}</div>
+        ${t.route ? `<div class="route">${escapeHtml(t.route)}</div>` : ""}
+        <div class="hint">Click to prefill train number ${escapeHtml(t.no)}</div>
+      `;
+      card.addEventListener("click", (e) => {
+        if (e.target.closest("[data-remove]")) return;
+        document.getElementById("stTrainNo").value = t.no;
+        document.getElementById("stStation").focus();
+      });
+      grid.appendChild(card);
+    });
+    grid.querySelectorAll("[data-remove]").forEach(b => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const i = parseInt(b.dataset.remove, 10);
+        trains.splice(i, 1);
+        renderTrainCards();
+      });
+    });
+  }
+
+  document.getElementById("addTrainBtn").addEventListener("click", () => {
+    const no = document.getElementById("newTrainNo").value.trim();
+    const name = document.getElementById("newTrainName").value.trim();
+    const route = document.getElementById("newTrainRoute").value.trim();
+    if (!/^\d{4,5}$/.test(no)) { alert("Please enter a valid 4-5 digit train number."); return; }
+    if (!name) { alert("Please enter a train name."); return; }
+    trains.push({ no, name, route });
+    document.getElementById("newTrainNo").value = "";
+    document.getElementById("newTrainName").value = "";
+    document.getElementById("newTrainRoute").value = "";
+    renderTrainCards();
+  });
+
+  // -------- Init --------
+  document.getElementById("todayPill").textContent = formatTodayHuman();
+  document.getElementById("stDate").value = new Date().toISOString().slice(0, 10);
+  renderTrainCards();
+  checkServer();
+  setInterval(checkServer, 30000); // re-check every 30s
+</script>
+</body>
+</html>
